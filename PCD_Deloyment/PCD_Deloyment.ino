@@ -444,10 +444,13 @@ void print_y_val(float y_val[]) {
     denom += exp(y_val[i]);
   }
   //Serial.println(denom);
+  Serial.print("Softmax: ");
   for (int i = 0; i < 5; i++) {
     y_val[i] = (exp(y_val[i])) / denom;
-    Serial.println(y_val[i]);
+    Serial.print(y_val[i]);
+    Serial.print("   ");
   }
+  Serial.println();
 }
 
 
@@ -488,6 +491,7 @@ void GetIMUHeadingDeg(MPU6050 *curr_mpu, uint16_t packetSize, int *global_fifo_c
   ypr[1] = (ypr[1] * 180 / M_PI);
   ypr[2] = (ypr[2] * 180 / M_PI);
 }
+
 
 void loop()
 {
@@ -571,9 +575,13 @@ void loop()
   y_val[3] = model_output->data.f[3];
   y_val[4] = model_output->data.f[4];
 
+
+  Serial.print("ML Model Output: ");
   for (int i = 0; i < 5; i++) {
-    Serial.println(y_val[i]);
+    Serial.print(y_val[i]);
+    Serial.print("  ");
   }
+  Serial.println();
 
   print_y_val(y_val);
 
