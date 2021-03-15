@@ -20,7 +20,6 @@
    limitations under the License.
 */
 
-
 /*
     Name:       Arduino MPU6050 Polling Test.ino
     Created:  10/5/2019 1:31:08 PM
@@ -29,13 +28,14 @@
   This is a complete, working MPU6050 (GY-521) example using polling vs interrupts.
   It is based on Jeff Rowberg's MPU6050_DMP6_using_DMP_V6.12 example.  After confirming
   that the example worked properly using interrupts, I modified it to remove the need
-  for the interrupt line.  
+  for the interrupt line.
 */
-
+#define M_PI 3.141592653589793238462643
+#include <Arduino.h>
 #include <TensorFlowLite.h>
-#include<stdlib.h>
+#include <stdlib.h>
 #include "I2Cdev.h"
-#include "MPU6050V6.h"  
+#include "MPU6050V6.h"
 
 // Import TensorFlow stuff
 #include "tensorflow/lite/micro/all_ops_resolver.h"
@@ -45,7 +45,7 @@
 #include "tensorflow/lite/version.h"
 
 //We are using a polling approach by toggling different IMUs to possess address 0x69
-MPU6050 mpu_1(0x69); 
+MPU6050 mpu_1(0x69);
 MPU6050 mpu_2(0x69);
 MPU6050 mpu_3(0x69);
 MPU6050 mpu_4(0x69);
@@ -57,48 +57,38 @@ int mpu_44 = 7;
 
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 
-
-
 #define _BV(bit) (1 << (bit)) //
 
 bool blinkState = false;
 
 // MPU control/status vars
-bool dmpReady_1 = false;  // set true if DMP init was successful
-bool dmpReady_2 = false;  // set true if DMP init was successful
-bool dmpReady_3 = false;  // set true if DMP init was successful
-bool dmpReady_4 = false;  // set true if DMP init was successful
-uint8_t mpuIntStatus_1;  // holds actual interrupt status byte from MPU
-uint8_t mpuIntStatus_2;  // holds actual interrupt status byte from MPU
-uint8_t mpuIntStatus_3;  // holds actual interrupt status byte from MPU
-uint8_t mpuIntStatus_4;  // holds actual interrupt status byte from MPU
-uint8_t devStatus_1;      // return status after each device operation (0 = success, !0 = error)
-uint8_t devStatus_2;      // return status after each device operation (0 = success, !0 = error)
-uint8_t devStatus_3;      // return status after each device operation (0 = success, !0 = error)
-uint8_t devStatus_4;      // return status after each device operation (0 = success, !0 = error)
-uint16_t packetSize_1;    // expected DMP packet size (default is 42 bytes)
-uint16_t packetSize_2;    // expected DMP packet size (default is 42 bytes)
-uint16_t packetSize_3;    // expected DMP packet size (default is 42 bytes)
-uint16_t packetSize_4;    // expected DMP packet size (default is 42 bytes)
-uint16_t fifoCount_1;     // count of all bytes currently in FIFO
-uint16_t fifoCount_2;     // count of all bytes currently in FIFO
-uint16_t fifoCount_3;     // count of all bytes currently in FIFO
-uint16_t fifoCount_4;     // count of all bytes currently in FIFO
-uint8_t fifoBuffer_1[64]; // FIFO storage buffer
-uint8_t fifoBuffer_2[64]; // FIFO storage buffer
-uint8_t fifoBuffer_3[64]; // FIFO storage buffer
-uint8_t fifoBuffer_4[64]; // FIFO storage buffer
+bool dmpReady_1 = false; // set true if DMP init was successful
+bool dmpReady_2 = false; // set true if DMP init was successful
+bool dmpReady_3 = false; // set true if DMP init was successful
+bool dmpReady_4 = false; // set true if DMP init was successful
+uint8_t mpuIntStatus;    // holds actual interrupt status byte from MPU
+uint8_t devStatus_1;     // return status after each device operation (0 = success, !0 = error)
+uint8_t devStatus_2;     // return status after each device operation (0 = success, !0 = error)
+uint8_t devStatus_3;     // return status after each device operation (0 = success, !0 = error)
+uint8_t devStatus_4;     // return status after each device operation (0 = success, !0 = error)
+uint16_t packetSize_1;   // expected DMP packet size (default is 42 bytes)
+uint16_t packetSize_2;   // expected DMP packet size (default is 42 bytes)
+uint16_t packetSize_3;   // expected DMP packet size (default is 42 bytes)
+uint16_t packetSize_4;   // expected DMP packet size (default is 42 bytes)
+uint16_t fifoCount;      // count of all bytes currently in FIFO
+uint16_t fifoCount_2;    // count of all bytes currently in FIFO
+uint16_t fifoCount_3;    // count of all bytes currently in FIFO
+uint16_t fifoCount_4;    // count of all bytes currently in FIFO
+uint8_t fifoBuffer[64];  // FIFO storage buffer
 
 // orientation/motion vars
-Quaternion q;           // [w, x, y, z]         quaternion container
-VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
-VectorFloat gravity;    // [x, y, z]            gravity vector
-float ypr_1[3];         // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-float ypr_2[3];         // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-float ypr_3[3];         // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-float ypr_4[3];         // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+Quaternion q;        // [w, x, y, z]         quaternion container
+VectorInt16 aa;      // [x, y, z]            accel sensor measurements
+VectorInt16 aaReal;  // [x, y, z]            gravity-free accel sensor measurements
+VectorInt16 aaWorld; // [x, y, z]            world-frame accel sensor measurements
+VectorFloat gravity; // [x, y, z]            gravity vector
+float ypr[3];        // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+float *ypr_ptr = ypr;
 
 //extra stuff
 int global_fifo_count_1 = 0; //made global so can monitor from outside GetIMUHeadingDeg() fcn
@@ -115,12 +105,13 @@ int global_fifo_count_4 = 0; //made global so can monitor from outside GetIMUHea
 // Some settings
 
 // TFLite globals, used for compatibility with Arduino-style sketches
-namespace {
-tflite::ErrorReporter* error_reporter = nullptr;
-const tflite::Model* model = nullptr;
-tflite::MicroInterpreter* interpreter = nullptr;
-TfLiteTensor* model_input = nullptr;
-TfLiteTensor* model_output = nullptr;
+namespace
+{
+tflite::ErrorReporter *error_reporter = nullptr;
+const tflite::Model *model = nullptr;
+tflite::MicroInterpreter *interpreter = nullptr;
+TfLiteTensor *model_input = nullptr;
+TfLiteTensor *model_output = nullptr;
 
 // Create an area of memory to use for input, output, and other TensorFlow
 // arrays. You'll need to adjust this by combiling, running, and looking
@@ -129,30 +120,30 @@ constexpr int kTensorArenaSize = 8 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
 } // namespace
 
-float x1,x2,x3,x4,y1,y2,y3,y4,z1,z2,z3,z4;
-
-
 // ================================================================
 // ===                      INITIAL SETUP                       ===
 // ================================================================
 
+void setup()
+{
 
-void setup() {
+  Serial.println("Starting");
   // Wait for Serial to connect
 
-     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
   Wire.begin();
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
 #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
   Fastwire::setup(400, true);
 #endif
-    pinMode(mpu_11,OUTPUT);
-    pinMode(mpu_22,OUTPUT);
-    pinMode(mpu_33,OUTPUT);
-    pinMode(mpu_44,OUTPUT);
+  pinMode(mpu_11, OUTPUT);
+  pinMode(mpu_22, OUTPUT);
+  pinMode(mpu_33, OUTPUT);
+  pinMode(mpu_44, OUTPUT);
 
 #if DEBUG
-  while (!Serial);
+  while (!Serial)
+    ;
 #endif
 
   // Set up logging (will report to Serial, even within TFLite functions)
@@ -161,9 +152,11 @@ void setup() {
 
   // Map the model into a usable data structure
   model = tflite::GetModel(PCD_Model);
-  if (model->version() != TFLITE_SCHEMA_VERSION) {
+  if (model->version() != TFLITE_SCHEMA_VERSION)
+  {
     error_reporter->Report("Model version does not match Schema");
-    while (1);
+    while (1)
+      ;
   }
 
   // Pull in only needed operations (should match NN layers)
@@ -177,9 +170,11 @@ void setup() {
 
   // Allocate memory from the tensor_arena for the model's tensors
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
-  if (allocate_status != kTfLiteOk) {
+  if (allocate_status != kTfLiteOk)
+  {
     TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
-    while (1);
+    while (1)
+      ;
   }
 
   // Assign model input and output buffers (tensors) to pointers
@@ -200,9 +195,9 @@ void setup() {
   Serial.println(model_input->type);
 #endif
 
-///////////////////////////////////////////////////////////////////// initialize device
+  ///////////////////////////////////////////////////////////////////// initialize device
   Serial.println(F("Initializing MPU6050..."));
-  digitalWrite(mpu_11,HIGH);
+  digitalWrite(mpu_11, HIGH);
   mpu_1.initialize();
   // verify connection
   Serial.println(F("Testing device connections..."));
@@ -245,12 +240,12 @@ void setup() {
   }
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(mpu_11,LOW);
+  digitalWrite(mpu_11, LOW);
 
-////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////
 
   Serial.println(F("Initializing MPU6050..."));
-  digitalWrite(mpu_22,HIGH);
+  digitalWrite(mpu_22, HIGH);
   mpu_2.initialize();
   // verify connection
   Serial.println(F("Testing device connections..."));
@@ -294,12 +289,12 @@ void setup() {
 
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(mpu_22,LOW);
+  digitalWrite(mpu_22, LOW);
 
-////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////
 
   Serial.println(F("Initializing MPU6050..."));
-  digitalWrite(mpu_22,HIGH);
+  digitalWrite(mpu_22, HIGH);
   mpu_2.initialize();
   // verify connection
   Serial.println(F("Testing device connections..."));
@@ -343,10 +338,10 @@ void setup() {
 
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(mpu_22,LOW);////////////////////////////////////////////////////////////////////////////
+  digitalWrite(mpu_22, LOW); ////////////////////////////////////////////////////////////////////////////
 
   Serial.println(F("Initializing MPU6050..."));
-  digitalWrite(mpu_33,HIGH);
+  digitalWrite(mpu_33, HIGH);
   mpu_3.initialize();
   // verify connection
   Serial.println(F("Testing device connections..."));
@@ -390,12 +385,12 @@ void setup() {
 
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(mpu_33,LOW);
+  digitalWrite(mpu_33, LOW);
 
   ////////////////////////////////////////////////////////////////////////////
 
   Serial.println(F("Initializing MPU6050..."));
-  digitalWrite(mpu_44,HIGH);
+  digitalWrite(mpu_44, HIGH);
   mpu_4.initialize();
   // verify connection
   Serial.println(F("Testing device connections..."));
@@ -439,85 +434,132 @@ void setup() {
 
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(mpu_44,LOW);
+  digitalWrite(mpu_44, LOW);
+}
+
+
+void print_y_val(float y_val[]) {
+  float denom = 0;
+  for (int i = 0; i < 5; i++) {
+    denom += exp(y_val[i]);
+  }
+  //Serial.println(denom);
+  for (int i = 0; i < 5; i++) {
+    y_val[i] = (exp(y_val[i])) / denom;
+    Serial.println(y_val[i]);
+  }
 }
 
 
 
+void GetIMUHeadingDeg(MPU6050 *curr_mpu, uint16_t packetSize, int *global_fifo_count)
+{
+  // At least one data packet is available
 
-void loop() {
+  mpuIntStatus = curr_mpu->getIntStatus();
+  fifoCount = curr_mpu->getFIFOCount(); // get current FIFO count
+
+  // check for overflow (this should never happen unless our code is too inefficient)
+  if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024)
+  {
+    // reset so we can continue cleanly
+    curr_mpu->resetFIFO();
+    Serial.println(F("FIFO overflow!"));
+
+    // otherwise, check for DMP data ready interrupt (this should happen frequently)
+  }
+  else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
+  {
+    // read all available packets from FIFO
+    while (fifoCount >= packetSize) // Lets catch up to NOW, in case someone is using the dreaded delay()!
+    {
+      curr_mpu->getFIFOBytes(fifoBuffer, packetSize);
+      // track FIFO count here in case there is > 1 packet available
+      // (this lets us immediately read more without waiting for an interrupt)
+      fifoCount -= packetSize;
+    }
+    *global_fifo_count = curr_mpu->getFIFOCount(); //should be zero here
+    // display Euler angles in degrees
+    curr_mpu->dmpGetQuaternion(&q, fifoBuffer);
+    curr_mpu->dmpGetGravity(&gravity, &q);
+    curr_mpu->dmpGetYawPitchRoll(ypr, &q, &gravity);
+  }
+  ypr[0] = (ypr[0] * 180 / M_PI);
+  ypr[1] = (ypr[1] * 180 / M_PI);
+  ypr[2] = (ypr[2] * 180 / M_PI);
+}
+
+void loop()
+{
   float duration = millis();
 
-  if (!dmpReady_1) {
+  if (!dmpReady_1)
+  {
     return;
   }
 
-  digitalWrite(mpu_11,HIGH);
+  digitalWrite(mpu_11, HIGH);
   if (mpu_1.dmpPacketAvailable())
   {
-    prev=millis();
-    GetIMUHeadingDeg_1(); //retreive the most current yaw value from IMU
+    GetIMUHeadingDeg(&mpu_1, packetSize_1, &global_fifo_count_1); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
+    model_input->data.f[0] = ypr[0];
+    model_input->data.f[1] = ypr[1];
+    model_input->data.f[2] = ypr[2];
   }
-  digitalWrite(mpu_11,LOW);
+  digitalWrite(mpu_11, LOW);
 
-
-  if (!dmpReady_2) {
+  if (!dmpReady_2)
+  {
     return;
   }
 
-  digitalWrite(mpu_22,HIGH);
+  digitalWrite(mpu_22, HIGH);
   if (mpu_2.dmpPacketAvailable())
   {
-    GetIMUHeadingDeg_2(); //retreive the most current yaw value from IMU
+    GetIMUHeadingDeg(&mpu_2, packetSize_2, &global_fifo_count_2); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
+    model_input->data.f[3] = ypr[0];
+    model_input->data.f[4] = ypr[1];
+    model_input->data.f[5] = ypr[2];
   }
-  digitalWrite(mpu_22,LOW);
+  digitalWrite(mpu_22, LOW);
 
-
-  digitalWrite(mpu_33,HIGH);
+  digitalWrite(mpu_33, HIGH);
   if (mpu_3.dmpPacketAvailable())
   {
-    GetIMUHeadingDeg_3(); //retreive the most current yaw value from IMU
+    GetIMUHeadingDeg(&mpu_3, packetSize_3, &global_fifo_count_3); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
+    model_input->data.f[6] = ypr[0];
+    model_input->data.f[7] = ypr[1];
+    model_input->data.f[8] = ypr[2];
   }
-  digitalWrite(mpu_33,LOW);
+  digitalWrite(mpu_33, LOW);
 
-  digitalWrite(mpu_44,HIGH);
+  digitalWrite(mpu_44, HIGH);
   if (mpu_4.dmpPacketAvailable())
   {
-    GetIMUHeadingDeg_4(); //retreive the most current yaw value from IMU
+    GetIMUHeadingDeg(&mpu_4, packetSize_4, &global_fifo_count_4); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
-    Serial.print("\t");
-    Serial.println(millis()-prev);
+    model_input->data.f[9] = ypr[0];
+    model_input->data.f[10] = ypr[1];
+    model_input->data.f[11] = ypr[2];
   }
-  digitalWrite(mpu_44,LOW);
+  digitalWrite(mpu_44, LOW);
 
   // Calculate x value to feed to the model
   float x_val = 1;
 
-
   // Copy value to input buffer (tensor)
-  model_input->data.f[0] = x1;
-  model_input->data.f[1] = y1;
-  model_input->data.f[2] = z1;
-  model_input->data.f[3] = x2;
-  model_input->data.f[4] = y2;
-  model_input->data.f[5] = z2;
-  model_input->data.f[6] = x3;
-  model_input->data.f[7] = y3;
-  model_input->data.f[8] = z3;
-  model_input->data.f[9] = x4;
-  model_input->data.f[10] = y4;
-  model_input->data.f[11] = z4;
 
   // Run inference
   TfLiteStatus invoke_status = interpreter->Invoke();
-  if (invoke_status != kTfLiteOk) {
+  if (invoke_status != kTfLiteOk)
+  {
     error_reporter->Report("Invoke failed on input: %f\n", x_val);
   }
 
@@ -529,186 +571,12 @@ void loop() {
   y_val[3] = model_output->data.f[3];
   y_val[4] = model_output->data.f[4];
 
-  print_y_val(y_val);
-  Serial.print("Dur: ");
-  Serial.println(millis() - duration);
-}
-
-
-
-void print_y_val(float y_val[]) {
-  int val_len = sizeof(y_val) / sizeof(float);
-  Serial.print("Length: ");
-  Serial.println(val_len);
-  float denom = 0;
   for (int i = 0; i < 5; i++) {
-    denom += exp(y_val[i]);
-  }
-  Serial.println(denom);
-  for (int i = 0; i < 5; i++) {
-    y_val[i]=(exp(y_val[i]))/denom;
     Serial.println(y_val[i]);
   }
-}
 
+  print_y_val(y_val);
 
-
-void GetIMUHeadingDeg_1()
-{
-  // At least one data packet is available
-
-  mpuIntStatus_1 = mpu_1.getIntStatus();  
-  fifoCount_1 = mpu_1.getFIFOCount();// get current FIFO count
-
-  // check for overflow (this should never happen unless our code is too inefficient)
-  if ((mpuIntStatus_1 & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount_1 >= 1024)
-  {
-    // reset so we can continue cleanly
-    mpu_1.resetFIFO();
-    Serial.println(F("FIFO overflow!"));
-
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  }
-  else if (mpuIntStatus_1 & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
-  {
-    // read all available packets from FIFO
-    while (fifoCount_1 >= packetSize_1) // Lets catch up to NOW, in case someone is using the dreaded delay()!
-    {
-      mpu_1.getFIFOBytes(fifoBuffer_1, packetSize_1);
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
-      fifoCount_1 -= packetSize_1;
-    }
-    global_fifo_count_1 = mpu_1.getFIFOCount(); //should be zero here
-
-    // display Euler angles in degrees
-    mpu_1.dmpGetQuaternion(&q, fifoBuffer_1);
-    mpu_1.dmpGetGravity(&gravity, &q);
-    mpu_1.dmpGetYawPitchRoll(ypr_1, &q, &gravity);
-  }
-
-    x1 = (ypr_1[0] * 180 / M_PI);
-    y1 = (ypr_1[1] * 180 / M_PI);
-    z1 = (ypr_1[2] * 180 / M_PI);
-}
-
-
-
-void GetIMUHeadingDeg_2()
-{
-  // At least one data packet is available
-
-  mpuIntStatus_2 = mpu_2.getIntStatus();  
-  fifoCount_2 = mpu_2.getFIFOCount();// get current FIFO count
-
-  // check for overflow (this should never happen unless our code is too inefficient)
-  if ((mpuIntStatus_2 & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount_2 >= 1024)
-  {
-    // reset so we can continue cleanly
-    mpu_2.resetFIFO();
-    Serial.println(F("FIFO overflow!"));
-
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  }
-  else if (mpuIntStatus_2 & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
-  {
-    // read all available packets from FIFO
-    while (fifoCount_2 >= packetSize_2) // Lets catch up to NOW, in case someone is using the dreaded delay()!
-    {
-      mpu_2.getFIFOBytes(fifoBuffer_2, packetSize_2);
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
-      fifoCount_2 -= packetSize_2;
-    }
-    global_fifo_count_2 = mpu_2.getFIFOCount(); //should be zero here
-
-    // display Euler angles in degrees
-    mpu_2.dmpGetQuaternion(&q, fifoBuffer_2);
-    mpu_2.dmpGetGravity(&gravity, &q);
-    mpu_2.dmpGetYawPitchRoll(ypr_2, &q, &gravity);
-  }
-
-    x2 = (ypr_1[0] * 180 / M_PI);
-    y2 = (ypr_1[1] * 180 / M_PI);
-    z2 = (ypr_1[2] * 180 / M_PI);
-}
-
-
-void GetIMUHeadingDeg_3()
-{
-  // At least one data packet is available
-
-  mpuIntStatus_3 = mpu_3.getIntStatus();  
-  fifoCount_3 = mpu_3.getFIFOCount();// get current FIFO count
-
-  // check for overflow (this should never happen unless our code is too inefficient)
-  if ((mpuIntStatus_3 & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount_3 >= 1024)
-  {
-    // reset so we can continue cleanly
-    mpu_3.resetFIFO();
-    Serial.println(F("FIFO overflow!"));
-
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  }
-  else if (mpuIntStatus_3 & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
-  {
-    // read all available packets from FIFO
-    while (fifoCount_3 >= packetSize_3) // Lets catch up to NOW, in case someone is using the dreaded delay()!
-    {
-      mpu_3.getFIFOBytes(fifoBuffer_3, packetSize_3);
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
-      fifoCount_3 -= packetSize_3;
-    }
-    global_fifo_count_3 = mpu_3.getFIFOCount(); //should be zero here
-
-    // display Euler angles in degrees
-    mpu_3.dmpGetQuaternion(&q, fifoBuffer_3);
-    mpu_3.dmpGetGravity(&gravity, &q);
-    mpu_3.dmpGetYawPitchRoll(ypr_3, &q, &gravity);
-  }
-
-    x3 = (ypr_1[0] * 180 / M_PI);
-    y3 = (ypr_1[1] * 180 / M_PI);
-    z3 = (ypr_1[2] * 180 / M_PI);
-}
-
-
-void GetIMUHeadingDeg_4()
-{
-  // At least one data packet is available
-
-  mpuIntStatus_4 = mpu_4.getIntStatus();  
-  fifoCount_4 = mpu_4.getFIFOCount();// get current FIFO count
-
-  // check for overflow (this should never happen unless our code is too inefficient)
-  if ((mpuIntStatus_4 & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount_4 >= 1024)
-  {
-    // reset so we can continue cleanly
-    mpu_4.resetFIFO();
-    Serial.println(F("FIFO overflow!"));
-
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  }
-  else if (mpuIntStatus_4 & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
-  {
-    // read all available packets from FIFO
-    while (fifoCount_4 >= packetSize_4) // Lets catch up to NOW, in case someone is using the dreaded delay()!
-    {
-      mpu_4.getFIFOBytes(fifoBuffer_4, packetSize_4);
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
-      fifoCount_4 -= packetSize_4;
-    }
-    global_fifo_count_4 = mpu_4.getFIFOCount(); //should be zero here
-
-    // display Euler angles in degrees
-    mpu_4.dmpGetQuaternion(&q, fifoBuffer_4);
-    mpu_4.dmpGetGravity(&gravity, &q);
-    mpu_4.dmpGetYawPitchRoll(ypr_4, &q, &gravity);
-  }
-
-    x4 = (ypr_1[0] * 180 / M_PI);
-    y4 = (ypr_1[1] * 180 / M_PI);
-    z4 = (ypr_1[2] * 180 / M_PI);
+  Serial.print("Dur: ");
+  Serial.println(millis() - duration);
 }
