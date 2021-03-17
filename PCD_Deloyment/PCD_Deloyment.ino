@@ -508,9 +508,9 @@ void loop()
     GetIMUHeadingDeg(&mpu_1, packetSize_1, &global_fifo_count_1); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[0] = ypr[0];
-    model_input->data.f[1] = ypr[1];
-    model_input->data.f[2] = ypr[2];
+    model_input->data.f[0] = ypr[0]/180;
+    model_input->data.f[1] = ypr[1]/180;
+    model_input->data.f[2] = ypr[2]/180;
   }
   digitalWrite(mpu_11, LOW);
 
@@ -525,9 +525,9 @@ void loop()
     GetIMUHeadingDeg(&mpu_2, packetSize_2, &global_fifo_count_2); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[3] = ypr[0];
-    model_input->data.f[4] = ypr[1];
-    model_input->data.f[5] = ypr[2];
+    model_input->data.f[3] = ypr[0]/180;
+    model_input->data.f[4] = ypr[1]/180;
+    model_input->data.f[5] = ypr[2]/180;
   }
   digitalWrite(mpu_22, LOW);
 
@@ -537,9 +537,9 @@ void loop()
     GetIMUHeadingDeg(&mpu_3, packetSize_3, &global_fifo_count_3); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[6] = ypr[0];
-    model_input->data.f[7] = ypr[1];
-    model_input->data.f[8] = ypr[2];
+    model_input->data.f[6] = ypr[0]/180;
+    model_input->data.f[7] = ypr[1]/180;
+    model_input->data.f[8] = ypr[2]/180;
   }
   digitalWrite(mpu_33, LOW);
 
@@ -549,9 +549,9 @@ void loop()
     GetIMUHeadingDeg(&mpu_4, packetSize_4, &global_fifo_count_4); //retreive the most current yaw value from IMU
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[9] = ypr[0];
-    model_input->data.f[10] = ypr[1];
-    model_input->data.f[11] = ypr[2];
+    model_input->data.f[9] = ypr[0]/180;
+    model_input->data.f[10] = ypr[1]/180;
+    model_input->data.f[11] = ypr[2]/180;
   }
   digitalWrite(mpu_44, LOW);
 
