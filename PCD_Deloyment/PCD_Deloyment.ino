@@ -126,7 +126,7 @@ uint8_t tensor_arena[kTensorArenaSize];
 
 void setup()
 {
-
+  delay(2000);
   Serial.println("Starting");
   // Wait for Serial to connect
 
@@ -444,13 +444,14 @@ void print_y_val(float y_val[]) {
     denom += exp(y_val[i]);
   }
   //Serial.println(denom);
+  Serial.print("\t");
   Serial.print("Softmax: ");
   for (int i = 0; i < 5; i++) {
+    Serial.print("\t");
     y_val[i] = (exp(y_val[i])) / denom;
     Serial.print(y_val[i]);
-    Serial.print("   ");
+    
   }
-  Serial.println();
 }
 
 
@@ -577,14 +578,14 @@ void loop()
 
 
   Serial.print("ML Model Output: ");
+  Serial.print("\t");
   for (int i = 0; i < 5; i++) {
     Serial.print(y_val[i]);
-    Serial.print("  ");
+    Serial.print("\t");
   }
-  Serial.println();
-
+  Serial.print("\t");
   print_y_val(y_val);
-
+  Serial.print("\t");
   Serial.print("Dur: ");
   Serial.println(millis() - duration);
 }
