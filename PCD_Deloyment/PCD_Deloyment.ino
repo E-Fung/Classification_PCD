@@ -33,6 +33,7 @@ uint8_t in = 0;
 int myCounter[6] = {0, 0, 0, 0, 0, 0};
 float angles[12];
 
+int time_threshold = 30;
 float myThresholds[5] = {0.7, 0.7, 0.7, 0.7, 0.7}; //alter this
 
 #define M_PI 3.141592653589793238462643
