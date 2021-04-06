@@ -557,7 +557,7 @@ void loop()
   myCounter[curr_pos]++;
 
 #ifdef COUNTER_DEBUG
-  Serial.print("\tCounter:\t");
+  Serial.print("Counter:\t");
   for (int prn_itr = 0; prn_itr < 6; prn_itr++) {
     Serial.print(myCounter[prn_itr]);
     Serial.print("\t");
@@ -567,7 +567,8 @@ void loop()
     if (myCounter[prn_itr] > time_threshold) {
 
       Serial.print("POSTURE:\t");
-      Serial.print(prn_itr);
+      Serial.print(prn_itr+1);
+      Serial.print("\t");
       if (last_pos != prn_itr && last_pos != 10) {
         digitalWrite(last_pos + 1, LOW);
       }
