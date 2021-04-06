@@ -13,49 +13,50 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
+#define _BV(bit) (1 << (bit))
+#define M_PI 3.141592653589793238462643
+#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
+
 // ================================================================
 // ===                      DEBUGGING                           ===
 // ================================================================
+
 #define DEBUG 0
 #define COUNTER_DEBUG
 //#define ANGLE_DEBUG
 //#define MODEL_DEBUG
-#define SOFTMAX_DEBUG
+//#define SOFTMAX_DEBUG
 
 // ================================================================
 // ===                      INITIALIZING                        ===
 // ================================================================
-//FIFO QUEUE
-Queue_t myqueue;
+
+Queue_t myqueue; //Queue
 uint8_t in = 0;
 
-//Holds what we want to know
-int myCounter[6] = {0, 0, 0, 0, 0, 0};
-float angles[12];
+int myCounter[6] = {0, 0, 0, 0, 0, 0}; //Counter
+float angles[12]; //Angles
 
-int time_threshold = 30;
-float myThresholds[5] = {0.7, 0.7, 0.7, 0.7, 0.7}; //alter this
+int queue_size = 50;
+int time_threshold = queue_size * 0.5; //Thresholds
+float myThresholds[5] = {0.7, 0.7, 0.7, 0.7, 0.7};
 
-#define M_PI 3.141592653589793238462643
-
-//We are using a polling approach by toggling different IMUs to possess address 0x69
-MPU6050 mpu_1(0x69);
+int LED_01;
+int LED_02;
+int LED_03;
+int LED_04;
+int LED_05;
+int LED_06;
+int last_pos = 10;
+MPU6050 mpu_1(0x69); //IMUs
 MPU6050 mpu_2(0x69);
 MPU6050 mpu_3(0x69);
 MPU6050 mpu_4(0x69);
-
 int mpu_11 = 4;
 int mpu_22 = 5;
 int mpu_33 = 6;
 int mpu_44 = 7;
-
-#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
-
-#define _BV(bit) (1 << (bit)) //
-
-bool blinkState = false;
-
-// MPU control/status vars
+bool blinkState = false; // MPU control/status vars
 bool dmpReady_1 = false; // set true if DMP init was successful
 bool dmpReady_2 = false; // set true if DMP init was successful
 bool dmpReady_3 = false; // set true if DMP init was successful
@@ -74,8 +75,6 @@ uint16_t fifoCount_2;    // count of all bytes currently in FIFO
 uint16_t fifoCount_3;    // count of all bytes currently in FIFO
 uint16_t fifoCount_4;    // count of all bytes currently in FIFO
 uint8_t fifoBuffer[64];  // FIFO storage buffer
-
-// orientation/motion vars
 Quaternion q;        // [w, x, y, z]         quaternion container
 VectorInt16 aa;      // [x, y, z]            accel sensor measurements
 VectorInt16 aaReal;  // [x, y, z]            gravity-free accel sensor measurements
@@ -83,8 +82,6 @@ VectorInt16 aaWorld; // [x, y, z]            world-frame accel sensor measuremen
 VectorFloat gravity; // [x, y, z]            gravity vector
 float ypr[3];        // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 float *ypr_ptr = ypr;
-
-//extra stuff
 int global_fifo_count_1 = 0; //made global so can monitor from outside GetIMUHeadingDeg() fcn
 int global_fifo_count_2 = 0; //made global so can monitor from outside GetIMUHeadingDeg() fcn
 int global_fifo_count_3 = 0; //made global so can monitor from outside GetIMUHeadingDeg() fcn
@@ -93,6 +90,7 @@ int global_fifo_count_4 = 0; //made global so can monitor from outside GetIMUHea
 // ================================================================
 // ===                   TENSORFLOW SETUP                       ===
 // ================================================================
+
 namespace
 {
 tflite::ErrorReporter *error_reporter = nullptr;
@@ -104,17 +102,38 @@ TfLiteTensor *model_output = nullptr;
 // Create an area of memory to use for input, output, and other TensorFlow
 // arrays. You'll need to adjust this by combiling, running, and looking
 // for errors.
-constexpr int kTensorArenaSize = 8 * 1024;
+constexpr int kTensorArenaSize = 6 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
-} // namespace
+}
 
 // ================================================================
 // ===                      INITIAL SETUP                       ===
 // ================================================================
+
 void setup()
 {
-  delay(2000);
+  delay(1000);
   Serial.println("Starting");// Wait for Serial to connect
+  pinMode(mpu_11, OUTPUT);
+  pinMode(mpu_22, OUTPUT);
+  pinMode(mpu_33, OUTPUT);
+  pinMode(mpu_44, OUTPUT);
+
+  pinMode(LED_01, OUTPUT);
+  pinMode(LED_02, OUTPUT);
+  pinMode(LED_03, OUTPUT);
+  pinMode(LED_04, OUTPUT);
+  pinMode(LED_05, OUTPUT);
+  pinMode(LED_06, OUTPUT);
+
+  digitalWrite(LED_01, LOW);
+  digitalWrite(LED_02, LOW);
+  digitalWrite(LED_03, LOW);
+  digitalWrite(LED_04, LOW);
+  digitalWrite(LED_05, LOW);
+  digitalWrite(LED_06, LOW);
+
+  //////////////////////////////////////////////////////////////////////////// Serial
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
   Wire.begin();
@@ -122,35 +141,29 @@ void setup()
 #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
   Fastwire::setup(400, true);
 #endif
-  pinMode(mpu_11, OUTPUT);
-  pinMode(mpu_22, OUTPUT);
-  pinMode(mpu_33, OUTPUT);
-  pinMode(mpu_44, OUTPUT);
 #if DEBUG
   while (!Serial)
     ;
 #endif
 
+  //////////////////////////////////////////////////////////////////////////// TensorFlow
+
   // Set up logging (will report to Serial, even within TFLite functions)
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
-
-  // Map the model into a usable data structure
-  model = tflite::GetModel(PCD_Model);
+  model = tflite::GetModel(PCD_Model);  // Map the model into a usable data structure
   if (model->version() != TFLITE_SCHEMA_VERSION)
   {
     error_reporter->Report("Model version does not match Schema");
     while (1)
       ;
   }
-
   // Pull in only needed operations (should match NN layers)
   // Available ops:
   //  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/micro_ops.h
   static tflite::AllOpsResolver resolver;
   static tflite::MicroInterpreter static_interpreter(model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
   interpreter = &static_interpreter;
-
   // Allocate memory from the tensor_arena for the model's tensors
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
   if (allocate_status != kTfLiteOk)
@@ -159,11 +172,9 @@ void setup()
     while (1)
       ;
   }
-
   // Assign model input and output buffers (tensors) to pointers
   model_input = interpreter->input(0);
   model_output = interpreter->output(0);
-
   // Get information about the memory area to use for the model's input
   // Supported data types:
   // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h#L226
@@ -180,7 +191,7 @@ void setup()
   Serial.println(model_input->type);
 #endif
 
-  ///////////////////////////////////////////////////////////////////// IMU 1
+  //////////////////////////////////////////////////////////////////////////// IMU 1
 
   Serial.println(F("Initializing MPU6050..."));
   digitalWrite(mpu_11, HIGH);
@@ -342,7 +353,9 @@ void setup()
   digitalWrite(mpu_44, LOW);
 
   //////////////////////////////////////////////////////////////////////////// QUEUE
-  q_init(&myqueue, sizeof(in), 50, FIFO, true);
+
+  q_init(&myqueue, sizeof(in), queue_size, FIFO, true);
+
 }
 
 // ================================================================
@@ -552,8 +565,33 @@ void loop()
 #endif
   for (int prn_itr = 0; prn_itr < 6; prn_itr++) {
     if (myCounter[prn_itr] > time_threshold) {
+
       Serial.print("POSTURE:\t");
       Serial.print(prn_itr);
+      if (last_pos != prn_itr && last_pos != 10) {
+        digitalWrite(last_pos + 1, LOW);
+      }
+      switch (prn_itr) {
+        case 0:
+          digitalWrite(LED_01, HIGH);
+          break;
+        case 1:
+          digitalWrite(LED_02, HIGH);
+          break;
+        case 2:
+          digitalWrite(LED_03, HIGH);
+          break;
+        case 3:
+          digitalWrite(LED_04, HIGH);
+          break;
+        case 4:
+          digitalWrite(LED_05, HIGH);
+          break;
+        case 5:
+          digitalWrite(LED_06, HIGH);
+          break;
+      }
+      last_pos = prn_itr;
     }
   }
   Serial.print("Dur: ");
