@@ -1,41 +1,10 @@
-/**
-   Test sinewave neural network model
-
-   Author: Pete Warden
-   Modified by: Shawn Hymel
-   Date: March 11, 2020
-
-   Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-*/
-
-/*
-    Name:       Arduino MPU6050 Polling Test.ino
-    Created:  10/5/2019 1:31:08 PM
-    Author:     FRANKWIN10\Frank
-
-  This is a complete, working MPU6050 (GY-521) example using polling vs interrupts.
-  It is based on Jeff Rowberg's MPU6050_DMP6_using_DMP_V6.12 example.  After confirming
-  that the example worked properly using interrupts, I modified it to remove the need
-  for the interrupt line.
-*/
-#define M_PI 3.141592653589793238462643
+#include <cQueue.h>
 #include <Arduino.h>
 #include <TensorFlowLite.h>
 #include <stdlib.h>
 #include "I2Cdev.h"
 #include "MPU6050V6.h"
+#include "PCD_Model.h"
 
 // Import TensorFlow stuff
 #include "tensorflow/lite/micro/all_ops_resolver.h"
@@ -43,6 +12,30 @@
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
+
+// ================================================================
+// ===                      DEBUGGING                           ===
+// ================================================================
+#define DEBUG 0
+#define COUNTER_DEBUG
+//#define ANGLE_DEBUG
+//#define MODEL_DEBUG
+#define SOFTMAX_DEBUG
+
+// ================================================================
+// ===                      INITIALIZING                        ===
+// ================================================================
+//FIFO QUEUE
+Queue_t myqueue;
+uint8_t in = 0;
+
+//Holds what we want to know
+int myCounter[6] = {0, 0, 0, 0, 0, 0};
+float angles[12];
+
+float myThresholds[5] = {0.7, 0.7, 0.7, 0.7, 0.7}; //alter this
+
+#define M_PI 3.141592653589793238462643
 
 //We are using a polling approach by toggling different IMUs to possess address 0x69
 MPU6050 mpu_1(0x69);
@@ -96,15 +89,9 @@ int global_fifo_count_2 = 0; //made global so can monitor from outside GetIMUHea
 int global_fifo_count_3 = 0; //made global so can monitor from outside GetIMUHeadingDeg() fcn
 int global_fifo_count_4 = 0; //made global so can monitor from outside GetIMUHeadingDeg() fcn
 
-// Our model
-#include "PCD_Model.h"
-
-// Figure out what's going on in our model
-#define DEBUG 0
-
-// Some settings
-
-// TFLite globals, used for compatibility with Arduino-style sketches
+// ================================================================
+// ===                   TENSORFLOW SETUP                       ===
+// ================================================================
 namespace
 {
 tflite::ErrorReporter *error_reporter = nullptr;
@@ -123,12 +110,10 @@ uint8_t tensor_arena[kTensorArenaSize];
 // ================================================================
 // ===                      INITIAL SETUP                       ===
 // ================================================================
-
 void setup()
 {
   delay(2000);
-  Serial.println("Starting");
-  // Wait for Serial to connect
+  Serial.println("Starting");// Wait for Serial to connect
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
   Wire.begin();
@@ -140,7 +125,6 @@ void setup()
   pinMode(mpu_22, OUTPUT);
   pinMode(mpu_33, OUTPUT);
   pinMode(mpu_44, OUTPUT);
-
 #if DEBUG
   while (!Serial)
     ;
@@ -163,9 +147,7 @@ void setup()
   // Available ops:
   //  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/micro_ops.h
   static tflite::AllOpsResolver resolver;
-
-  static tflite::MicroInterpreter static_interpreter(
-    model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
+  static tflite::MicroInterpreter static_interpreter(model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
   interpreter = &static_interpreter;
 
   // Allocate memory from the tensor_arena for the model's tensors
@@ -191,11 +173,14 @@ void setup()
   Serial.println(model_input->dims->data[0]);
   Serial.print("Dim 2 size: ");
   Serial.println(model_input->dims->data[1]);
+  Serial.print("Dim 3 size: ");
+  Serial.println(model_input->dims->data[2]);
   Serial.print("Input type: ");
   Serial.println(model_input->type);
 #endif
 
-  ///////////////////////////////////////////////////////////////////// initialize device
+  ///////////////////////////////////////////////////////////////////// IMU 1
+
   Serial.println(F("Initializing MPU6050..."));
   digitalWrite(mpu_11, HIGH);
   mpu_1.initialize();
@@ -205,13 +190,6 @@ void setup()
   // load and configure the DMP
   Serial.println(F("Initializing DMP..."));
   devStatus_1 = mpu_1.dmpInitialize();
-  // supply your own gyro offsets here, scaled for min sensitivity
-  mpu_1.setXGyroOffset(51);
-  mpu_1.setYGyroOffset(8);
-  mpu_1.setZGyroOffset(21);
-  mpu_1.setXAccelOffset(1150);
-  mpu_1.setYAccelOffset(-50);
-  mpu_1.setZAccelOffset(1060);
   // make sure it worked (returns 0 if so)
   if (devStatus_1 == 0)
   {
@@ -234,7 +212,7 @@ void setup()
     // 1 = initial memory load failed
     // 2 = DMP configuration updates failed
     // (if it's going to break, usually the code will be 1)
-    Serial.print(F("DMP Initialization failed (code "));
+    Serial.print(F("DMP 1 Initialization failed (code "));
     Serial.print(devStatus_1);
     Serial.println(F(")"));
   }
@@ -242,7 +220,7 @@ void setup()
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(mpu_11, LOW);
 
-  ////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////// IMU 2
 
   Serial.println(F("Initializing MPU6050..."));
   digitalWrite(mpu_22, HIGH);
@@ -253,13 +231,6 @@ void setup()
   // load and configure the DMP
   Serial.println(F("Initializing DMP..."));
   devStatus_2 = mpu_2.dmpInitialize();
-  // supply your own gyro offsets here, scaled for min sensitivity
-  mpu_2.setXGyroOffset(51);
-  mpu_2.setYGyroOffset(8);
-  mpu_2.setZGyroOffset(21);
-  mpu_2.setXAccelOffset(1150);
-  mpu_2.setYAccelOffset(-50);
-  mpu_2.setZAccelOffset(1060);
   // make sure it worked (returns 0 if so)
   if (devStatus_2 == 0)
   {
@@ -282,63 +253,14 @@ void setup()
     // 1 = initial memory load failed
     // 2 = DMP configuration updates failed
     // (if it's going to break, usually the code will be 1)
-    Serial.print(F("DMP Initialization failed (code "));
+    Serial.print(F("DMP 2 Initialization failed (code "));
     Serial.print(devStatus_2);
     Serial.println(F(")"));
   }
-
   // configure LED for output
-  pinMode(LED_PIN, OUTPUT);
   digitalWrite(mpu_22, LOW);
 
-  ////////////////////////////////////////////////////////////////////////////
-
-  Serial.println(F("Initializing MPU6050..."));
-  digitalWrite(mpu_22, HIGH);
-  mpu_2.initialize();
-  // verify connection
-  Serial.println(F("Testing device connections..."));
-  Serial.println(mpu_2.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-  // load and configure the DMP
-  Serial.println(F("Initializing DMP..."));
-  devStatus_2 = mpu_2.dmpInitialize();
-  // supply your own gyro offsets here, scaled for min sensitivity
-  mpu_2.setXGyroOffset(51);
-  mpu_2.setYGyroOffset(8);
-  mpu_2.setZGyroOffset(21);
-  mpu_2.setXAccelOffset(1150);
-  mpu_2.setYAccelOffset(-50);
-  mpu_2.setZAccelOffset(1060);
-  // make sure it worked (returns 0 if so)
-  if (devStatus_2 == 0)
-  {
-    // Calibration Time: generate offsets and calibrate our MPU6050
-    mpu_2.CalibrateAccel(6);
-    mpu_2.CalibrateGyro(6);
-    mpu_2.PrintActiveOffsets();
-    // turn on the DMP, now that it's ready
-    Serial.println(F("Enabling DMP..."));
-    mpu_2.setDMPEnabled(true);
-    // set our DMP Ready flag so the main loop() function knows it's okay to use it
-    Serial.println(F("DMP ready! Waiting for first interrupt..."));
-    dmpReady_2 = true;
-    // get expected DMP packet size for later comparison
-    packetSize_2 = mpu_2.dmpGetFIFOPacketSize();
-  }
-  else
-  {
-    // ERROR!
-    // 1 = initial memory load failed
-    // 2 = DMP configuration updates failed
-    // (if it's going to break, usually the code will be 1)
-    Serial.print(F("DMP Initialization failed (code "));
-    Serial.print(devStatus_2);
-    Serial.println(F(")"));
-  }
-
-  // configure LED for output
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(mpu_22, LOW); ////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////// IMU 3
 
   Serial.println(F("Initializing MPU6050..."));
   digitalWrite(mpu_33, HIGH);
@@ -349,13 +271,6 @@ void setup()
   // load and configure the DMP
   Serial.println(F("Initializing DMP..."));
   devStatus_3 = mpu_3.dmpInitialize();
-  // supply your own gyro offsets here, scaled for min sensitivity
-  mpu_3.setXGyroOffset(51);
-  mpu_3.setYGyroOffset(8);
-  mpu_3.setZGyroOffset(21);
-  mpu_3.setXAccelOffset(1150);
-  mpu_3.setYAccelOffset(-50);
-  mpu_3.setZAccelOffset(1060);
   // make sure it worked (returns 0 if so)
   if (devStatus_3 == 0)
   {
@@ -367,7 +282,7 @@ void setup()
     Serial.println(F("Enabling DMP..."));
     mpu_3.setDMPEnabled(true);
     // set our DMP Ready flag so the main loop() function knows it's okay to use it
-    Serial.println(F("DMP ready! Waiting for first interrupt..."));
+    Serial.println(F("DMP 3 ready! Waiting for first interrupt..."));
     dmpReady_3 = true;
     // get expected DMP packet size for later comparison
     packetSize_3 = mpu_3.dmpGetFIFOPacketSize();
@@ -382,12 +297,10 @@ void setup()
     Serial.print(devStatus_3);
     Serial.println(F(")"));
   }
-
   // configure LED for output
-  pinMode(LED_PIN, OUTPUT);
   digitalWrite(mpu_33, LOW);
 
-  ////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////// IMU 4
 
   Serial.println(F("Initializing MPU6050..."));
   digitalWrite(mpu_44, HIGH);
@@ -398,13 +311,6 @@ void setup()
   // load and configure the DMP
   Serial.println(F("Initializing DMP..."));
   devStatus_4 = mpu_4.dmpInitialize();
-  // supply your own gyro offsets here, scaled for min sensitivity
-  mpu_4.setXGyroOffset(51);
-  mpu_4.setYGyroOffset(8);
-  mpu_4.setZGyroOffset(21);
-  mpu_4.setXAccelOffset(1150);
-  mpu_4.setYAccelOffset(-50);
-  mpu_4.setZAccelOffset(1060);
   // make sure it worked (returns 0 if so)
   if (devStatus_4 == 0)
   {
@@ -427,49 +333,57 @@ void setup()
     // 1 = initial memory load failed
     // 2 = DMP configuration updates failed
     // (if it's going to break, usually the code will be 1)
-    Serial.print(F("DMP Initialization failed (code "));
+    Serial.print(F("DMP 4 Initialization failed (code "));
     Serial.print(devStatus_4);
     Serial.println(F(")"));
   }
-
   // configure LED for output
-  pinMode(LED_PIN, OUTPUT);
   digitalWrite(mpu_44, LOW);
+
+  //////////////////////////////////////////////////////////////////////////// QUEUE
+  q_init(&myqueue, sizeof(in), 50, FIFO, true);
 }
 
-
-void print_y_val(float y_val[]) {
+// ================================================================
+// ===                      SOFTMAX FUNCTION                    ===
+// ================================================================
+//This function converts the model outputs through a softmax filter and prints the results
+void convert_softmax(float y_val[]) {
   float denom = 0;
   for (int i = 0; i < 5; i++) {
     denom += exp(y_val[i]);
   }
-  //Serial.println(denom);
-  Serial.print("\t");
-  Serial.print("Softmax: ");
+  for (int i = 0; i < 5; i++) {
+    y_val[i] = (exp(y_val[i])) / denom;
+  }
+}
+
+// ================================================================
+// ===                PRINT SOFTMAX FUNCTION                    ===
+// ================================================================
+void print_y_val(float y_val[]) {
+  Serial.print("Softmax:");
   for (int i = 0; i < 5; i++) {
     Serial.print("\t");
-    y_val[i] = (exp(y_val[i])) / denom;
     Serial.print(y_val[i]);
-    
   }
 }
 
 
-
+// ================================================================
+// ===                      UPDATE IMU FUNCTION                 ===
+// ================================================================
 void GetIMUHeadingDeg(MPU6050 *curr_mpu, uint16_t packetSize, int *global_fifo_count)
 {
   // At least one data packet is available
-
   mpuIntStatus = curr_mpu->getIntStatus();
   fifoCount = curr_mpu->getFIFOCount(); // get current FIFO count
-
   // check for overflow (this should never happen unless our code is too inefficient)
   if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024)
   {
     // reset so we can continue cleanly
     curr_mpu->resetFIFO();
     Serial.println(F("FIFO overflow!"));
-
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
   }
   else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
@@ -494,80 +408,90 @@ void GetIMUHeadingDeg(MPU6050 *curr_mpu, uint16_t packetSize, int *global_fifo_c
 }
 
 
+// ================================================================
+// ===                      MAIN LOOP                           ===
+// ================================================================
 void loop()
 {
   float duration = millis();
-
+  //////////////////////////////////////////////////////////////////////////// IMU 1
   if (!dmpReady_1)
   {
     return;
   }
-
   digitalWrite(mpu_11, HIGH);
   if (mpu_1.dmpPacketAvailable())
   {
-    GetIMUHeadingDeg(&mpu_1, packetSize_1, &global_fifo_count_1); //retreive the most current yaw value from IMU
-    blinkState = !blinkState;
-    digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[0] = ypr[0]/180;
-    model_input->data.f[1] = ypr[1]/180;
-    model_input->data.f[2] = ypr[2]/180;
+    GetIMUHeadingDeg(&mpu_1, packetSize_1, &global_fifo_count_1); //retreive the most current yaw
+    angles[0] = ypr[0] / 180;
+    angles[1] = ypr[1] / 180;
+    angles[2] = ypr[2] / 180;
+    model_input->data.f[0] = angles[0];
+    model_input->data.f[1] = angles[1];
+    model_input->data.f[2] = angles[2];
   }
   digitalWrite(mpu_11, LOW);
 
+  //////////////////////////////////////////////////////////////////////////// IMU 2
   if (!dmpReady_2)
   {
     return;
   }
-
   digitalWrite(mpu_22, HIGH);
   if (mpu_2.dmpPacketAvailable())
   {
-    GetIMUHeadingDeg(&mpu_2, packetSize_2, &global_fifo_count_2); //retreive the most current yaw value from IMU
-    blinkState = !blinkState;
-    digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[3] = ypr[0]/180;
-    model_input->data.f[4] = ypr[1]/180;
-    model_input->data.f[5] = ypr[2]/180;
+    GetIMUHeadingDeg(&mpu_2, packetSize_2, &global_fifo_count_2); //retreive the most current yaw
+    angles[3] = ypr[0] / 180;
+    angles[4] = ypr[1] / 180;
+    angles[5] = ypr[2] / 180;
+    model_input->data.f[3] = angles[3];
+    model_input->data.f[4] = angles[4];
+    model_input->data.f[5] = angles[5];
   }
   digitalWrite(mpu_22, LOW);
 
+  //////////////////////////////////////////////////////////////////////////// IMU 3
+  if (!dmpReady_3)
+  {
+    return;
+  }
   digitalWrite(mpu_33, HIGH);
   if (mpu_3.dmpPacketAvailable())
   {
-    GetIMUHeadingDeg(&mpu_3, packetSize_3, &global_fifo_count_3); //retreive the most current yaw value from IMU
-    blinkState = !blinkState;
-    digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[6] = ypr[0]/180;
-    model_input->data.f[7] = ypr[1]/180;
-    model_input->data.f[8] = ypr[2]/180;
+    GetIMUHeadingDeg(&mpu_3, packetSize_3, &global_fifo_count_3); //retreive the most current yaw
+    angles[6] = ypr[0] / 180;
+    angles[7] = ypr[1] / 180;
+    angles[8] = ypr[2] / 180;
+    model_input->data.f[6] = angles[6];
+    model_input->data.f[7] = angles[7];
+    model_input->data.f[8] = angles[8];
   }
   digitalWrite(mpu_33, LOW);
 
+  //////////////////////////////////////////////////////////////////////////// IMU 4
+  if (!dmpReady_4)
+  {
+    return;
+  }
   digitalWrite(mpu_44, HIGH);
   if (mpu_4.dmpPacketAvailable())
   {
-    GetIMUHeadingDeg(&mpu_4, packetSize_4, &global_fifo_count_4); //retreive the most current yaw value from IMU
-    blinkState = !blinkState;
-    digitalWrite(LED_PIN, blinkState);
-    model_input->data.f[9] = ypr[0]/180;
-    model_input->data.f[10] = ypr[1]/180;
-    model_input->data.f[11] = ypr[2]/180;
+    GetIMUHeadingDeg(&mpu_4, packetSize_4, &global_fifo_count_4); //retreive the most current yaw
+    angles[9] = ypr[0] / 180;
+    angles[10] = ypr[1] / 180;
+    angles[11] = ypr[2] / 180;
+    model_input->data.f[9] = angles[9];
+    model_input->data.f[10] = angles[10];
+    model_input->data.f[11] = angles[11];
   }
   digitalWrite(mpu_44, LOW);
-
-  // Calculate x value to feed to the model
-  float x_val = 1;
-
-  // Copy value to input buffer (tensor)
-
+  //////////////////////////////////////////////////////////////////////////// MODEL
   // Run inference
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk)
   {
-    error_reporter->Report("Invoke failed on input: %f\n", x_val);
+    error_reporter->Report("Invoke failed on input: ");
   }
-
   // Read predicted y value from output buffer (tensor)
   float y_val[5];
   y_val[0] = model_output->data.f[0];
@@ -575,17 +499,62 @@ void loop()
   y_val[2] = model_output->data.f[2];
   y_val[3] = model_output->data.f[3];
   y_val[4] = model_output->data.f[4];
+  //////////////////////////////////////////////////////////////////////////// VALUE PRINTING
+#ifdef ANGLE_DEBUG
+  for (int i = 0; i < 12; i++) {
+    Serial.print(angles[i]);
+    Serial.print("\t");
+  }
+#endif
 
-
+#ifdef MODEL_DEBUG
   Serial.print("ML Model Output: ");
   Serial.print("\t");
   for (int i = 0; i < 5; i++) {
     Serial.print(y_val[i]);
     Serial.print("\t");
   }
-  Serial.print("\t");
+#endif
+
+#ifdef SOFTMAX_DEBUG
+  convert_softmax(y_val);
   print_y_val(y_val);
-  Serial.print("\t");
+#endif
+
+
+  int curr_pos = 10;
+  int temp = NULL;
+  for (int per_itr = 0; per_itr <= 5; per_itr++) {
+    if (y_val[per_itr] >= myThresholds[per_itr]) {
+      curr_pos = per_itr;
+    }
+  }
+  if (curr_pos == 10) {
+    curr_pos = 5;
+  }
+  if (q_isFull(&myqueue)) {
+    q_pop(&myqueue, &temp);
+    myCounter[temp]--;
+    q_push(&myqueue, &curr_pos);
+  }
+  else {
+    q_push(&myqueue, &curr_pos);
+  }
+  myCounter[curr_pos]++;
+
+#ifdef COUNTER_DEBUG
+  Serial.print("\tCounter:\t");
+  for (int prn_itr = 0; prn_itr < 6; prn_itr++) {
+    Serial.print(myCounter[prn_itr]);
+    Serial.print("\t");
+  }
+#endif
+  for (int prn_itr = 0; prn_itr < 6; prn_itr++) {
+    if (myCounter[prn_itr] > time_threshold) {
+      Serial.print("POSTURE:\t");
+      Serial.print(prn_itr);
+    }
+  }
   Serial.print("Dur: ");
   Serial.println(millis() - duration);
 }
