@@ -25,7 +25,7 @@
 #define COUNTER_DEBUG
 //#define ANGLE_DEBUG
 //#define MODEL_DEBUG
-//#define SOFTMAX_DEBUG
+#define SOFTMAX_DEBUG
 
 // ================================================================
 // ===                      INITIALIZING                        ===
@@ -48,6 +48,7 @@ int LED_04;
 int LED_05;
 int LED_06;
 int last_pos = 10;
+int last_led;
 MPU6050 mpu_1(0x69); //IMUs
 MPU6050 mpu_2(0x69);
 MPU6050 mpu_3(0x69);
@@ -102,7 +103,7 @@ TfLiteTensor *model_output = nullptr;
 // Create an area of memory to use for input, output, and other TensorFlow
 // arrays. You'll need to adjust this by combiling, running, and looking
 // for errors.
-constexpr int kTensorArenaSize = 6 * 1024;
+constexpr int kTensorArenaSize = 4 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
 }
 
@@ -530,28 +531,29 @@ void loop()
   }
 #endif
 
-#ifdef SOFTMAX_DEBUG
   convert_softmax(y_val);
+  
+#ifdef SOFTMAX_DEBUG
   print_y_val(y_val);
 #endif
 
 
   int curr_pos = 10;
   int temp = NULL;
-  for (int per_itr = 0; per_itr <= 5; per_itr++) {
+  for (int per_itr = 0; per_itr <= 5; per_itr++) {//checks which posture crosses the threshold 0-4
     if (y_val[per_itr] >= myThresholds[per_itr]) {
       curr_pos = per_itr;
     }
   }
-  if (curr_pos == 10) {
+  if (curr_pos == 10) {//No Known Posture
     curr_pos = 5;
   }
-  if (q_isFull(&myqueue)) {
+  if (q_isFull(&myqueue)) {//If Queue is full pop the first element and decrement that counter
     q_pop(&myqueue, &temp);
     myCounter[temp]--;
     q_push(&myqueue, &curr_pos);
   }
-  else {
+  else {//else just add to queue
     q_push(&myqueue, &curr_pos);
   }
   myCounter[curr_pos]++;
@@ -563,33 +565,40 @@ void loop()
     Serial.print("\t");
   }
 #endif
+
   for (int prn_itr = 0; prn_itr < 6; prn_itr++) {
-    if (myCounter[prn_itr] > time_threshold) {
+    if (myCounter[prn_itr] > time_threshold && last_pos != prn_itr ) {
 
       Serial.print("POSTURE:\t");
-      Serial.print(prn_itr+1);
+      Serial.print(prn_itr + 1);
       Serial.print("\t");
-      if (last_pos != prn_itr && last_pos != 10) {
-        digitalWrite(last_pos + 1, LOW);
+      if (last_pos != 10) {
+        digitalWrite(last_led, LOW);
       }
       switch (prn_itr) {
         case 0:
           digitalWrite(LED_01, HIGH);
+          last_led = LED_01;
           break;
         case 1:
           digitalWrite(LED_02, HIGH);
+          last_led = LED_02;
           break;
         case 2:
           digitalWrite(LED_03, HIGH);
+          last_led = LED_03;
           break;
         case 3:
           digitalWrite(LED_04, HIGH);
+          last_led = LED_04;
           break;
         case 4:
           digitalWrite(LED_05, HIGH);
+          last_led = LED_05;
           break;
         case 5:
           digitalWrite(LED_06, HIGH);
+          last_led = LED_06;
           break;
       }
       last_pos = prn_itr;
