@@ -37,9 +37,9 @@ uint8_t in = 0;
 int myCounter[6] = {0, 0, 0, 0, 0, 0}; //Counter
 float angles[12]; //Angles
 
-int queue_size = 50;
+int queue_size = 100;
 int time_threshold = queue_size * 0.5; //Thresholds
-float myThresholds[5] = {0.7, 0.7, 0.7, 0.7, 0.7};
+float myThresholds[5] = {0.5, 0.5, 0.5, 0.5, 0.5};
 
 int LED_01;
 int LED_02;
@@ -103,7 +103,7 @@ TfLiteTensor *model_output = nullptr;
 // Create an area of memory to use for input, output, and other TensorFlow
 // arrays. You'll need to adjust this by combiling, running, and looking
 // for errors.
-constexpr int kTensorArenaSize = 4 * 1024;
+constexpr int kTensorArenaSize = 8 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
 }
 
@@ -567,12 +567,12 @@ void loop()
 #endif
 
   for (int prn_itr = 0; prn_itr < 6; prn_itr++) {
-    if (myCounter[prn_itr] > time_threshold && last_pos != prn_itr ) {
+    if (myCounter[prn_itr] > time_threshold) { //if a counter value is above threshold
 
       Serial.print("POSTURE:\t");
       Serial.print(prn_itr + 1);
       Serial.print("\t");
-      if (last_pos != 10) {
+      if (last_pos != 10 && last_pos != prn_itr ) {
         digitalWrite(last_led, LOW);
       }
       switch (prn_itr) {
