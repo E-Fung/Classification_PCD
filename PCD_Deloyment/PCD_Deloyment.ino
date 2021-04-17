@@ -214,7 +214,7 @@ void setup()
     Serial.println(F("Enabling DMP..."));
     mpu_1.setDMPEnabled(true);
     // set our DMP Ready flag so the main loop() function knows it's okay to use it
-    Serial.println(F("DMP ready! Waiting for first interrupt..."));
+    Serial.println(F("DMP 1 ready! Waiting for first interrupt..."));
     dmpReady_1 = true;
     // get expected DMP packet size for later comparison
     packetSize_1 = mpu_1.dmpGetFIFOPacketSize();
@@ -255,7 +255,7 @@ void setup()
     Serial.println(F("Enabling DMP..."));
     mpu_2.setDMPEnabled(true);
     // set our DMP Ready flag so the main loop() function knows it's okay to use it
-    Serial.println(F("DMP ready! Waiting for first interrupt..."));
+    Serial.println(F("DMP 2 ready! Waiting for first interrupt..."));
     dmpReady_2 = true;
     // get expected DMP packet size for later comparison
     packetSize_2 = mpu_2.dmpGetFIFOPacketSize();
@@ -335,7 +335,7 @@ void setup()
     Serial.println(F("Enabling DMP..."));
     mpu_4.setDMPEnabled(true);
     // set our DMP Ready flag so the main loop() function knows it's okay to use it
-    Serial.println(F("DMP ready! Waiting for first interrupt..."));
+    Serial.println(F("DMP 4 ready! Waiting for first interrupt..."));
     dmpReady_4 = true;
     // get expected DMP packet size for later comparison
     packetSize_4 = mpu_4.dmpGetFIFOPacketSize();
@@ -537,12 +537,13 @@ void loop()
   print_y_val(y_val);
 #endif
 
-
+  //Checks if the model's outputs have crossed the threshold
   int curr_pos = 10;
   int temp = NULL;
   for (int per_itr = 0; per_itr <= 5; per_itr++) {//checks which posture crosses the threshold 0-4
     if (y_val[per_itr] >= myThresholds[per_itr]) {
       curr_pos = per_itr;
+      break;
     }
   }
   if (curr_pos == 10) {//No Known Posture
@@ -566,6 +567,8 @@ void loop()
   }
 #endif
 
+
+  //Counter that determines if a posture is being assumed
   for (int prn_itr = 0; prn_itr < 6; prn_itr++) {
     if (myCounter[prn_itr] > time_threshold) { //if a counter value is above threshold
 
